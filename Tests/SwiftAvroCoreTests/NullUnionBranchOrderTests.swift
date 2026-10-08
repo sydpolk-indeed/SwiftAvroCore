@@ -51,6 +51,21 @@ struct NullUnionBranchOrderTests {
         }
     }
 
+    private struct Reordered: Codable {
+        let a: String?
+        let b: String
+
+        private enum CodingKeys: String, CodingKey {
+            case a, b
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(b, forKey: .b)
+            try container.encodeIfPresent(a, forKey: .a)
+        }
+    }
+
     private struct MixedUnionEvent: Codable {
         let value: Int64?
     }
@@ -212,6 +227,20 @@ struct NullUnionBranchOrderTests {
         let data = try Avro().encodeFrom(model, schema: explicitNilSchema)
 
         #expect([UInt8](data) == [0x02, 0x00, 0x02, 0x66])
+    }
+
+    @Test("A field encoded after a later field throws instead of encoding twice")
+    func outOfOrderNullableFieldThrows() throws {
+        let schema = try #require(Avro().decodeSchema(schema: """
+            {"type":"record","name":"Reordered","fields":[
+              {"name":"a","type":["null","string"]},
+              {"name":"b","type":"string"}
+            ]}
+            """))
+
+        #expect(throws: BinaryEncodingError.fieldOutOfOrder) {
+            try Avro().encodeFrom(Reordered(a: "q", b: "z"), schema: schema)
+        }
     }
 
     @Test("Nested record with only the first field set encodes trailing null indices")
